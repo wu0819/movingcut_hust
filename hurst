@@ -1,0 +1,479 @@
+"""
+确定滑动移窗L值，生成子序列；
+离散小波变换，计算子序列标度指数γ；
+"""
+from __future__ import division
+
+import datetime
+import math
+from tkinter.filedialog import askopenfilename
+
+import pandas as pd
+import pywt
+import tsod
+from matplotlib import pyplot as plt
+from pywt import wavedec, upcoef
+
+import numpy as np
+from pandas import Series
+from scipy import fft
+from vmdpy import VMD
+
+
+def Hurst(ts):
+    ts = list(ts)
+    N = len(ts)
+    if N < 20:
+        raise ValueError("Time series is too short! input series ought to have at least 20 samples!")
+
+    max_k = int(np.floor(N / 2))
+    R_S_dict = []
+    for k in range(1, max_k + 1):
+        R, S = 0, 0
+        # split ts into subsets
+        subset_list = [ts[i:i + k] for i in range(0, N, k)]
+        if np.mod(N, k) > 0:
+            subset_list.pop()
+            # tail = subset_list.pop()
+            # subset_list[-1].extend(tail)
+        # calc mean of every subset
+        mean_list = [np.mean(x) for x in subset_list]
+        for i in range(len(subset_list)):
+            cumsum_list = pd.Series(subset_list[i] - mean_list[i]).cumsum()
+            R += max(cumsum_list) - min(cumsum_list)
+            S += np.std(subset_list[i])
+        R_S_dict.append({"R": R / len(subset_list), "S": S / len(subset_list), "n": k})
+
+    log_R_S = []
+    log_n = []
+    # print(R_S_dict)
+    for i in range(len(R_S_dict)):
+        R_S = (R_S_dict[i]["R"] + np.spacing(1)) / (R_S_dict[i]["S"] + np.spacing(1))
+        log_R_S.append(np.log(R_S))
+        log_n.append(np.log(R_S_dict[i]["n"]))
+
+    Hurst_exponent = np.polyfit(log_n, log_R_S, 1)[0]
+    return Hurst_exponent
+
+
+def hurst(ts1, n, kk):
+    hur = []
+    data_2 = []
+    for i in range(0, n - kk + 1, kk):  # 将数据每隔kk分为一段
+        if i + kk < len(ts1):
+            data_2.append(ts1[i:i + kk])
+        else:
+            data_2.append(ts1[i:len(ts1)])
+    for j in range(len(data_2)):  # 对每一段数据进行HURST分析
+        aa = Hurst(data_2[j])
+
+        hur.append(aa)
+    return hur
+
+
+def ana_t(ts1, n, kk):
+    hur = []
+    data_2 = []
+    for i in range(0, n - kk + 1):  # 将数据每隔1,分为一段,或者说直接在这里计算特征量？
+        if i + kk < len(ts1):
+            data_2.append(ts1[i:i + kk])
+        else:
+            data_2.append(ts1[i:len(ts1)])
+
+    return hur
+
+
+def timepoint(tipoint):
+    """
+    输入区段值，输出时间序列点。
+    :param tipoint:
+    :return: 时间序列点
+    """
+    global timelist1
+    tipoint1 = []
+    tipoint2 = []
+    timelist1 = []
+    tipoint2.append(0)
+    for i in range(int(len(tipoint) / 2)):
+        tipoint1.append(tipoint[2 * i])  # 频率
+        tipoint2.append(tipoint[2 * i + 1])  # 范围
+
+    for i in range(len(tipoint2) - 1):
+        tt = np.linspace(0, (tipoint2[i + 1] - tipoint2[i]) / tipoint1[i], tipoint2[i + 1] - tipoint2[i] + 1)
+        if i == 0:
+            timelist1.extend(tt)
+        else:
+            timelist1.extend(tt[1:] + timelist1[-1])
+
+    return timelist1
+
+
+def wrcoef(X, coef_type, coeffs, wavename, level):
+    N = np.array(X).size
+    a, ds = coeffs[0], list(reversed(coeffs[1:]))
+    if coef_type == 'a':
+        return pywt.upcoef('a', a, wavename, level=level)[:N]
+    elif coef_type == 'd':
+        return pywt.upcoef('d', ds[level - 1], wavename, level=level)[:N]
+    else:
+        raise ValueError("Invalid coefficient type: {}".format(coef_type))
+
+
+def tinput(data, n, kk):
+    """
+    滑动移除窗口并计算标度指标
+    :param data:
+    :param n:
+    :param kk:
+    :return:
+    """
+    scale_index = []
+    for i in range(0, n - kk + 1, kk):  # 循环移除窗口
+        ETA = []
+        STA = []
+        data_1 = data.copy()
+        del data_1[i:i + kk]
+        coeffs = pywt.wavedec(data_1, 'sym8', level=9)
+        cA9, cD9, cD8, cD7, cD6, cD5, cD4, cD3, cD2, cD1 = coeffs
+        DDD = (cD1, cD2, cD3, cD4, cD5, cD6, cD7, cD8, cD9)
+        # for i in range(len(DD)):
+        #     DDD.append(wrcoef(DD[i], 'd', coeffs, 'sym8', i+1))
+        JES = JS = ES = S = JJS = 0
+        # plt.figure()
+        # plt.subplot(521)
+        # plt.plot(coeffs[0])
+        # plt.subplot(522)
+        # plt.plot(coeffs[1])
+        # plt.subplot(523)
+        # plt.plot(coeffs[2])
+        # plt.subplot(524)
+        # plt.plot(coeffs[3])
+        # plt.subplot(525)
+        # plt.plot(coeffs[4])
+        # plt.subplot(526)
+        # plt.plot(coeffs[5])
+        # plt.subplot(527)
+        # plt.plot(coeffs[6])
+        # plt.subplot(528)
+        # plt.plot(coeffs[7])
+        # plt.subplot(529)
+        # plt.plot(coeffs[8])
+        # plt.subplot(5, 2, 10)
+        # plt.plot(coeffs[9])
+        # plt.show()
+        """下面的j做下标可以不变，做乘数要加一"""
+        for j in range(len(DDD)):  # 计算中间参量
+            DJK = 0
+            for k in range(len(DDD[j])):
+                DJK += np.power(DDD[j][k], 2)
+            ETA.append(math.log2(DJK / len(DDD[j])))
+            STA.append((n * (math.log(2, math.e)) ** 2) / 2 ** (j + 1))
+        for j in range(len(ETA)):  # 计算小波估计值
+            JES += (j + 1) * ETA[j] * STA[j]
+            JS += (j + 1) * STA[j]
+            ES += ETA[j] * STA[j]
+            S += STA[j]
+            JJS += (j + 1) * (j + 1) * STA[j]
+        EST = (((JES - JS * ES) / (S * JJS - JS ** 2)) + 1) / 2
+        scale_index.append(EST)
+    # print(scale_index)
+    x = np.linspace(kk, n, len(scale_index))
+    plt.figure()
+    plt.title("标度指标γ 窗口=%s" % kk)
+    plt.plot(x, scale_index, marker='x')
+    return scale_index
+
+
+def tinput1(data, n, kk):
+    """
+    滑动窗口并计算标度指标
+    :param data:
+    :param n:
+    :param kk:
+    :return:
+    """
+    scale_index = []
+    for i in range(0, n - kk + 1, kk):
+        ETA = []
+        STA = []
+        data_2 = []
+        for i in range(0, len(data), kk):
+            if i + kk < len(data):
+                data_2.append(data[i:i + kk])
+            else:
+                data_2.append(data[i:len(data)])
+        scale_index = []
+        for i in range(len(data_2)):
+            coeffs = pywt.wavedec(data_2[i], 'sym4', level=4)
+            cA4, cD4, cD3, cD2, cD1 = coeffs
+            DDD = (cD1, cD2, cD3, cD4)
+            # for i in range(len(DD)):
+            #     DDD.append(wrcoef(DD[i], 'd', coeffs, 'sym8', i+1))
+            JES = JS = ES = S = JJS = 0
+            # plt.figure()
+            # plt.subplot(521)
+            # plt.plot(coeffs[0])
+            # plt.subplot(522)
+            # plt.plot(coeffs[1])
+            # plt.subplot(523)
+            # plt.plot(coeffs[2])
+            # plt.subplot(524)
+            # plt.plot(coeffs[3])
+            # plt.subplot(525)
+            # plt.plot(coeffs[4])
+            # plt.subplot(526)
+            # plt.plot(coeffs[5])
+            # plt.subplot(527)
+            # plt.plot(coeffs[6])
+            # plt.subplot(528)
+            # plt.plot(coeffs[7])
+            # plt.subplot(529)
+            # plt.plot(coeffs[8])
+            # plt.subplot(5, 2, 10)
+            # plt.plot(coeffs[9])
+            # plt.show()
+            """下面的j做下标可以不变，做乘数要加一"""
+            for j in range(len(DDD)):  # 计算中间参量
+                DJK = 0
+                for k in range(len(DDD[j])):
+                    DJK += np.power(DDD[j][k], 2)
+                ETA.append(math.log2(DJK / len(DDD[j])))
+                STA.append((n * (math.log(2, math.e)) ** 2) / 2 ** (j + 1))
+            for j in range(len(ETA)):  # 计算小波估计值
+                JES += (j + 1) * ETA[j] * STA[j]
+                JS += (j + 1) * STA[j]
+                ES += ETA[j] * STA[j]
+                S += STA[j]
+                JJS += (j + 1) * (j + 1) * STA[j]
+            EST = (((JES - JS * ES) / (S * JJS - JS ** 2)) + 1) / 2
+            scale_index.append(EST)
+        # print(scale_index)
+
+    x = np.linspace(kk, n, len(scale_index))
+    plt.figure()
+    plt.title("标度指标γ 窗口=%s" % kk)
+    plt.plot(x, scale_index, marker='x')
+    return scale_index
+
+
+def MTT(data, step, x):
+    n = len(data)
+    v = step + step - 2  # 自由度
+    t = np.zeros(n)
+    ss = np.sqrt(1 / step + 1 / step)
+
+    ttest = x  # 这个需要根据需要查表做改动
+    for i in range(step, n - step):
+        n1 = data[i - step:i]
+        n2 = data[i:i + step]
+        x1 = np.mean(n1)  # 平均值
+        x2 = np.mean(n2)
+        s1 = np.std(n1)  # 方差
+        s2 = np.std(n2)
+        s = np.sqrt((step * s1 * s1 + step * s2 * s2) / v)
+        t[i] = (x1 - x2) / (s * ss)
+
+    plt.figure()
+    plt.tick_params(labelsize=20)
+    # plt.plot(x[:len(t)], t, label="滑动T值(step=%s)" % step)
+    plt.plot(t, label="滑动T值(step=%s)" % step)
+    # plt.axhline(0, ls="--", c="k")
+    plt.axhline(ttest, ls="--", c="r", label='95%显著区间')
+    plt.axhline(-ttest, ls="--", c="r")
+    plt.legend(loc='upper center', frameon=False, ncol=2, fontsize=20)  # 图例
+    # plt.show()
+    return t
+
+
+def Input(data, tipoint, k):
+    """
+    输入数据，并生成有效段子序列。
+    :return:子序列
+    """
+    subsequence = []
+    freq = tipoint[::2]  # 分别取频率和采样点
+    point = tipoint[1::2]
+    for i in range(len(freq)):
+        if freq[i] > 50:
+            for j in range(point[i - 1] + 1, point[i], k):
+                if point[i] - j > k:
+                    subsequence.append(data[j:j + k])
+                else:
+                    subsequence.append(data[j:point[i]])
+
+    return subsequence
+
+
+def Transform(data):
+    """
+    小波变换，计算各个子序列标度指数。
+    :return:scale_index
+    """
+    scale = []
+    for i in range(len(data)):
+        scale.append(np.power(data[i] - np.var(data), 2) / np.var(data))
+    return scale
+
+
+def draw(data, K, jun, sp):
+    plt.rcParams['font.sans-serif'] = ['SimHei']
+    plt.rcParams['axes.unicode_minus'] = False
+    x = np.linspace(sp, K, len(data))
+    plt.figure()
+    plt.title('方差贡献率')
+    plt.plot(x, data, marker='o')
+    # plt.axhline(y=np.var(data))
+    plt.axhline(y=jun * 3, c='r')
+    # plt.axhline(y=jun-biao, c='r')
+
+
+def draw3(UA, UB, UC):
+    plt.rcParams['font.sans-serif'] = ['SimHei']
+    plt.rcParams['axes.unicode_minus'] = False
+    plt.figure()
+    plt.plot(UA, label='UA')
+    plt.plot(UB, label='UB')
+    plt.plot(UC, label='UC')
+    plt.legend()
+
+
+def tdraw(data, point):
+    plt.rcParams['font.sans-serif'] = ['SimHei']
+    plt.rcParams['axes.unicode_minus'] = False
+
+    plt.figure()
+    # plt.plot(point[:len(data)], data)
+    plt.plot(data)
+    # plt.show()
+
+
+def period(data, step):
+    t = []
+    for i in range(0, len(data) - step - 1):
+        t.append(np.var(data[i:i + step]))
+    plt.figure()
+    plt.tick_params(labelsize=20)
+    plt.plot(t)
+    return t
+
+
+if __name__ == "__main__":
+    import read_comtrade
+
+    print('Start... ...')
+
+    CFG_file = askopenfilename(title='请选择一个CFG文件', initialdir='/', filetypes=[('CFG file', '*.CFG')])
+    print(CFG_file)
+    UA, UB, UC, U0, I0, tipoint = read_comtrade.main(CFG_file)
+    timelist1 = timepoint(tipoint)
+    #
+    # """
+    # 此处省略段为模态分解
+    # """
+    # alpha = 2000  # alpha 带宽限制经验取值为抽样点长度1.5-2.0倍
+    # tau = 0  # tau 噪声容限，即允许重构后的信号与原始信号有差别。
+    # K = 4  # K 分解模态（IMF）个数
+    # DC = 0  # DC 若为0则让第一个IMF为直流分量/趋势向量
+    # init = 1  # init 指每个IMF的中心频率进行初始化。当初始化为1时，进行均匀初始化。
+    # tol = 1e-7  # 控制误差大小常量，决定精度与迭代次数
+    # u, u_hat, omega = VMD(U0, alpha, tau, K, DC, init, tol)  # 输出U是各个IMF分量，u_hat是各IMF的频谱，omega为各IMF的中心频率
+    #
+    # # 画原始信号和它的各成分
+    # plt.figure(figsize=(10, 7))
+    # plt.plot(U0, label='U0')
+    # # plt.plot(UC, label='UC')
+    # # plt.plot(UB, label='UB')
+    # # plt.plot(UA, label='UA')
+    # plt.legend()
+    # plt.figure(figsize=(10, 7))
+    # plt.subplot(4, 1, 1)
+    # plt.plot(u[0].T, label='NO.1layer', c='r')
+    # plt.legend()
+    # plt.subplot(4, 1, 2)
+    # plt.plot(u[1].T, label='NO.2layer', c='g')
+    # plt.legend()
+    # plt.subplot(4, 1, 3)
+    # plt.plot(u[2].T, label='NO.3layer', c='b')
+    # plt.legend()
+    # plt.subplot(4, 1, 4)
+    # plt.plot(u[3].T, label='NO.4layer', c='k')
+    # # plt.title('all Decomposed modes')
+    # plt.legend()
+    # plt.show()
+
+    # plt.figure()
+    # plt.subplot(2,1,1)
+    # plt.plot(UA)
+    # plt.plot(UB)
+    # plt.plot(UC)
+    # plt.subplot(2,1,2)
+    # plt.plot(U0)
+    # plt.show()
+    # plt.figure()
+    # plt.subplot(311)
+    # # plt.plot(UA,label='UA')
+    # plt.plot(timelist1[2290:2718], UB[2290:2718], label='UB')
+    # # plt.plot(UC,label='UC')
+    # # plt.grid()
+    # plt.xlabel("t/s")
+    # plt.ylabel("U/kV")
+    # plt.legend()
+    # plt.subplot(313)
+    # plt.plot(timelist1[2290:2718], I0[2290:2718], label='I0')
+    # plt.xlabel("t/s")
+    # plt.ylabel("I/A")
+    # plt.legend()
+    # plt.subplot(312)
+    # plt.plot(timelist1[2290:2718], U0[2290:2718], label='U0')
+    # plt.xlabel("t/s")
+    # plt.ylabel("U/kV")
+    # plt.legend()
+    # plt.show()
+
+    print(tipoint)
+    U00 = []
+    if len(tipoint) != 2:  # 如果数据不止一个采样频率段
+        for i in range(0, len(tipoint), 2):
+            if tipoint[i] > 50:  # 如果采样频率大于50
+                if i != 0:  # 如果不是第一个点
+                    U00.append(U0[tipoint[i - 1]:tipoint[i + 1]])
+                else:
+                    U00.append(U0[:tipoint[i + 1]])
+    else:  # 如果数据只有一个采样频率段
+        if tipoint[0] > 50:  # 如果采样频率大于50
+            U00.append(U0[tipoint[0]:tipoint[1]])
+    UU = []
+    cd = 80
+    for i in range(len(U00)):
+        timelist = timepoint(tipoint)  # 计算时间序列，便于画图
+        tdraw(U00[i], timelist)  # 正常画波形图
+
+        N = len(U00[i])
+        # k = 480
+        Hur = hurst(U00[i], N, cd)
+        UU.append(Hur)
+    print(UU)
+    for i in range(len(UU)):
+        abnx = []
+        abny = []
+        chazhi = []
+        plt.figure()
+        mean = 0.775
+        std = np.std(UU[i])
+        print(std)
+        for k in range(1, len(UU[i]) - 1):
+            # if np.abs(UU[i][k] - UU[i][k - 1]) >= 0.003 and 0.003 <= np.abs(UU[i][k + 1] - UU[i][k]):
+            if (1.2 * np.abs(UU[i][k] - UU[i][k - 1]) <= np.abs(UU[i][k + 1] - UU[i][k]) and np.abs(
+                    UU[i][k + 1] - UU[i][k]) > 0.0012) or (np.abs(UU[i][k + 1] - UU[i][k]) > 0.0025):  # 取的点为起点
+                # if 2.5 * np.abs(UU[i][k] - UU[i][k - 1]) <= np.abs(UU[i][k + 1] - UU[i][k]):  # 取的点为起点
+                #     abny.append(UU[i][k + 1])
+                abnx.append((k + 1) * cd)
+        for j in range(0, len(UU[i])):
+            chazhi.append(np.abs(UU[i][j] - np.min(UU[i])) / (np.max(UU[i]) - np.min(UU[i])))  # 归一化处理
+        print('...')
+        x = np.linspace(0, (len(UU[i]) - 1) * cd, num=len(UU[i]))
+        # plt.plot(x, chazhi)
+        plt.plot(x, UU[i], marker='x')
+
+    plt.show()
+    print('End...')
